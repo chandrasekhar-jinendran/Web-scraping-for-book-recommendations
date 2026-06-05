@@ -2,10 +2,13 @@
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
 .Python
 *.egg-info/
 dist/
 build/
+.venv/
+venv/
 book_report_*.html
 trending_*.html
+.DS_Store
+*.log

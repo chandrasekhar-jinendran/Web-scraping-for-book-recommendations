@@ -8,6 +8,20 @@
     {% else %}Book Report: {{ report.query_title }}{% endif %}
   </title>
   <style>
+    .web-nav {
+      background: #0d1117;
+      border-bottom: 1px solid #30363d;
+      padding: 0.6rem 2rem;
+      display: flex; align-items: center; gap: 1.5rem;
+      position: sticky; top: 0; z-index: 200;
+      font-size: 0.85rem;
+    }
+    .web-nav a {
+      color: #58a6ff; text-decoration: none;
+      display: flex; align-items: center; gap: 0.35rem;
+    }
+    .web-nav a:hover { text-decoration: underline; }
+    .web-nav .sep { color: #30363d; }
     :root {
       --bg:          #0d1117;
       --surface:     #161b22;
@@ -323,6 +337,16 @@
   </style>
 </head>
 <body>
+
+{% if web_mode %}
+<nav class="web-nav">
+  <a href="/">← Home</a>
+  <span class="sep">|</span>
+  <a href="/trending">Trending 30</a>
+  <span class="sep">|</span>
+  <span style="color:#8b949e;">Generated {{ report.generated_at }}</span>
+</nav>
+{% endif %}
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- PAGE HEADER                                                       -->

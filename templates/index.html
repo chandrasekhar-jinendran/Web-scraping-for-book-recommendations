@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Recommender</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 540px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #58a6ff;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle {
+      color: #8b949e;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      font-size: 1rem;
+      padding: 0.6rem 0.9rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #58a6ff; }
+    input[type="text"]::placeholder { color: #484f58; }
+
+    .btn-row { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+
+    button {
+      flex: 1;
+      padding: 0.65rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    .btn-primary { background: #238636; color: #fff; }
+    .btn-secondary { background: #21262d; color: #58a6ff; border: 1px solid #30363d; }
+
+    .divider {
+      text-align: center;
+      color: #484f58;
+      font-size: 0.82rem;
+      margin: 1.5rem 0;
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .divider::before, .divider::after {
+      content: ""; flex: 1; height: 1px; background: #30363d;
+    }
+
+    .trending-btn {
+      display: block; width: 100%;
+      padding: 0.75rem;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #58a6ff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .trending-btn:hover { background: #21262d; border-color: #58a6ff; }
+
+    .sources {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #21262d;
+      font-size: 0.78rem;
+      color: #484f58;
+      text-align: center;
+    }
+    .sources span {
+      display: inline-block;
+      background: #21262d;
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      margin: 0.15rem;
+    }
+
+    /* Loading overlay */
+    #loading {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(13,17,23,0.92);
+      z-index: 999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+    #loading.active { display: flex; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: #8b949e; font-size: 0.95rem; }
+    #loading .note { color: #484f58; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>📚 Book Recommender</h1>
+  <p class="subtitle">Aggregates reviews &amp; ratings from 7 free sources in parallel</p>
+
+  <form action="/book" method="get" onsubmit="showLoading('Searching across all sources…')">
+    <label for="title">Book title</label>
+    <input id="title" name="title" type="text" placeholder="e.g. Dune, Atomic Habits, The Martian" autocomplete="off" required>
+
+    <label for="author">Author <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+    <input id="author" name="author" type="text" placeholder="e.g. Frank Herbert">
+
+    <div class="btn-row">
+      <button type="submit" class="btn-primary">Search</button>
+    </div>
+  </form>
+
+  <div class="divider">or</div>
+
+  <a class="trending-btn" href="/trending" onclick="showLoading('Fetching trending books of the month…'); return true;">
+    📈 View Trending 30 Books This Month
+  </a>
+
+  <div class="sources">
+    Sources:
+    <span>Open Library</span>
+    <span>Google Books</span>
+    <span>Gutenberg</span>
+    <span>Reddit</span>
+    <span>Hacker News</span>
+    <span>NYT Books</span>
+    <span>Goodreads</span>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p id="loading-msg">Fetching data…</p>
+  <span class="note">Scraping 7 sources in parallel — takes 20–60 s</span>
+</div>
+
+<script>
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg || 'Fetching data…';
+  document.getElementById('loading').classList.add('active');
+}
+</script>
+
+</body>
+</html>

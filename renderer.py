@@ -26,9 +26,12 @@ class ReportRenderer:
         self._env.globals["to_json"] = _safe_json
 
     def render(self, report: AggregatedReport, output_path: str) -> None:
-        template = self._env.get_template("report.html.j2")
-        html = template.render(report=report)
+        html = self.render_to_string(report)
         Path(output_path).write_text(html, encoding="utf-8")
+
+    def render_to_string(self, report: AggregatedReport, web_mode: bool = False) -> str:
+        template = self._env.get_template("report.html.j2")
+        return template.render(report=report, web_mode=web_mode)
 
 
 # ---------------------------------------------------------------------------
