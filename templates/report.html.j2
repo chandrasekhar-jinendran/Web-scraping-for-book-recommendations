@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>
+    {% if report.mode == "trending" %}30 Hottest Books — {{ report.generated_at[:7] }}
+    {% else %}Book Report: {{ report.query_title }}{% endif %}
+  </title>
+  <style>
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface2:    #21262d;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #8b949e;
+      --accent:      #58a6ff;
+      --success:     #3fb950;
+      --warning:     #d29922;
+      --danger:      #f85149;
+      --radius:      8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ─────────────────────────────────── */
+    .page-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .page-header h1 { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+    .page-header .meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.25rem; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+    /* ── Source status bar ──────────────────────── */
+    .source-bar {
+      display: flex; flex-wrap: wrap; gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .source-chip {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.78rem; font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .source-chip.ok   { background: #1a3a1e; border-color: var(--success); color: var(--success); }
+    .source-chip.fail { background: #3a1a1a; border-color: var(--danger);  color: var(--danger); }
+    .source-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    /* ── Warnings ───────────────────────────────── */
+    .warnings {
+      background: #2d1f00; border: 1px solid var(--warning);
+      border-radius: var(--radius); padding: 0.8rem 1rem;
+      margin-bottom: 1.5rem; font-size: 0.85rem;
+    }
+    .warnings summary { cursor: pointer; color: var(--warning); font-weight: 600; }
+    .warnings li { margin-top: 0.3rem; color: var(--muted); }
+
+    /* ── Section headings ───────────────────────── */
+    .section-title {
+      font-size: 1.1rem; font-weight: 700;
+      color: var(--accent); letter-spacing: 0.02em;
+      margin: 2rem 0 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Trending book cards ────────────────────── */
+    .books-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+    .book-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex; gap: 0.9rem;
+      padding: 1rem;
+      transition: border-color 0.15s;
+    }
+    .book-card:hover { border-color: var(--accent); }
+
+    .rank-col { display: flex; flex-direction: column; align-items: center; min-width: 44px; }
+    .rank-badge {
+      width: 40px; height: 40px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 800; color: var(--accent);
+      flex-shrink: 0;
+    }
+    .rank-badge.top3 { border-color: #ffd700; color: #ffd700; background: #1a1a00; }
+    .rank-badge.top10 { border-color: var(--warning); color: var(--warning); }
+
+    .book-cover {
+      width: 60px; height: 88px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .book-cover-placeholder {
+      width: 60px; height: 88px;
+      background: var(--surface2);
+      border-radius: 4px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 1.6rem;
+      border: 1px solid var(--border);
+    }
+
+    .book-info { flex: 1; min-width: 0; }
+    .book-title {
+      font-size: 0.97rem; font-weight: 700;
+      line-height: 1.3; margin-bottom: 0.2rem;
+      color: var(--text);
+    }
+    .book-title a { color: inherit; text-decoration: none; }
+    .book-title a:hover { color: var(--accent); }
+    .book-authors { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
+    .book-year    { font-size: 0.78rem; color: var(--muted); }
+
+    .source-badges { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0.4rem 0; }
+    .badge {
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.72rem; font-weight: 600;
+      color: #fff;
+    }
+
+    .score-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
+    .score-bar-track {
+      flex: 1; height: 4px; background: var(--surface2);
+      border-radius: 2px; overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #58a6ff, #3fb950);
+      border-radius: 2px;
+    }
+    .score-label { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+
+    .book-rating { font-size: 0.83rem; color: #ffd700; margin: 0.2rem 0; }
+    .book-genres { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+    .genre-tag {
+      display: inline-block;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.05rem 0.4rem;
+      margin: 0.1rem;
+      font-size: 0.72rem;
+    }
+    .book-desc { font-size: 0.82rem; color: var(--muted); margin-top: 0.4rem; line-height: 1.5; }
+
+    .bestseller-tag {
+      display: inline-block;
+      background: #1a0000; border: 1px solid var(--danger);
+      border-radius: 4px; padding: 0.1rem 0.5rem;
+      font-size: 0.73rem; color: var(--danger); font-weight: 600;
+      margin-top: 0.3rem;
+    }
+
+    /* ── Metadata table ─────────────────────────── */
+    .meta-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .meta-table td { padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border); }
+    .meta-table td:first-child { color: var(--muted); width: 160px; white-space: nowrap; }
+    .meta-table tr:last-child td { border-bottom: none; }
+
+    /* ── Ratings summary ────────────────────────── */
+    .ratings-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .ratings-table th {
+      text-align: left; padding: 0.4rem 0.7rem;
+      color: var(--muted); font-weight: 600; font-size: 0.78rem;
+      border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .ratings-table td { padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border); }
+    .ratings-table tr:hover td { background: var(--surface2); }
+    .rating-avg { font-size: 1.2rem; font-weight: 700; color: #ffd700; }
+
+    /* ── Discussions ────────────────────────────── */
+    .discussions { display: flex; flex-direction: column; gap: 0.6rem; }
+    .discussion-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .discussion-item summary {
+      cursor: pointer; padding: 0.75rem 1rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      list-style: none; user-select: none;
+    }
+    .discussion-item summary::-webkit-details-marker { display: none; }
+    .discussion-arrow { color: var(--muted); font-size: 0.8rem; transition: transform 0.15s; }
+    details[open] .discussion-arrow { transform: rotate(90deg); }
+    .discussion-title { flex: 1; font-size: 0.9rem; font-weight: 600; }
+    .discussion-meta { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+    .discussion-comments { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .comment-block {
+      background: var(--surface2);
+      border-left: 3px solid var(--border);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.83rem; color: var(--muted); line-height: 1.5;
+    }
+
+    /* ── Reviews ────────────────────────────────── */
+    .reviews-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.8rem; }
+    .review-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+    }
+    .review-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+    .review-source { font-size: 0.75rem; font-weight: 600; }
+    .review-author { font-size: 0.8rem; color: var(--muted); }
+    .review-rating { font-size: 0.85rem; color: #ffd700; }
+    .review-text { font-size: 0.84rem; color: var(--muted); line-height: 1.55; }
+
+    /* ── Similar books ──────────────────────────── */
+    .similar-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .similar-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem 0.85rem;
+      font-size: 0.85rem;
+    }
+    .similar-item .s-title { font-weight: 600; }
+    .similar-item .s-author { color: var(--muted); font-size: 0.8rem; }
+
+    /* ── Bestseller table ───────────────────────── */
+    .bs-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .bs-item {
+      background: #1a0000; border: 1px solid var(--danger);
+      border-radius: var(--radius); padding: 0.5rem 0.85rem;
+      font-size: 0.85rem;
+    }
+    .bs-item .bs-list-name { font-weight: 700; color: var(--danger); }
+    .bs-item .bs-details { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+
+    /* ── Collapsible sections ───────────────────── */
+    .collapsible {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.6rem;
+      overflow: hidden;
+    }
+    .collapsible > summary {
+      padding: 0.8rem 1rem;
+      cursor: pointer; user-select: none;
+      font-size: 0.9rem; font-weight: 600;
+      display: flex; align-items: center; gap: 0.5rem;
+      list-style: none;
+    }
+    .collapsible > summary::-webkit-details-marker { display: none; }
+    .collapsible > summary::before {
+      content: "▶"; font-size: 0.7rem; color: var(--muted);
+      transition: transform 0.15s;
+    }
+    details[open].collapsible > summary::before { transform: rotate(90deg); }
+    .collapsible-body { padding: 1rem; border-top: 1px solid var(--border); }
+
+    /* ── Raw JSON ───────────────────────────────── */
+    pre.json {
+      background: #0a0a0f;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.8rem;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: #a8c4a2;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    /* ── Book deep-dive header ──────────────────── */
+    .book-hero {
+      display: flex; gap: 1.5rem; align-items: flex-start;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .hero-cover {
+      width: 120px; height: 175px;
+      object-fit: cover; border-radius: 4px;
+      flex-shrink: 0; border: 1px solid var(--border);
+    }
+    .hero-cover-placeholder {
+      width: 120px; height: 175px;
+      background: var(--surface2); border-radius: 4px;
+      flex-shrink: 0; display: flex; align-items: center;
+      justify-content: center; color: var(--muted);
+      font-size: 3rem; border: 1px solid var(--border);
+    }
+    .hero-info h1 { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.3rem; }
+    .hero-info .hero-authors { font-size: 1rem; color: var(--muted); margin-bottom: 0.6rem; }
+    .hero-info .hero-desc { font-size: 0.88rem; color: var(--muted); line-height: 1.6; max-width: 700px; }
+
+    /* ── Footer ─────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.2rem 2rem; margin-top: 3rem;
+      font-size: 0.8rem; color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- PAGE HEADER                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<header class="page-header">
+  {% if report.mode == "trending" %}
+    <h1>📚 30 Hottest Books — {{ report.generated_at[:7] }}</h1>
+    <div class="meta">
+      Trend data aggregated from {{ report.scraper_results | selectattr("success") | list | length }}
+      source(s) · Generated {{ report.generated_at }}
+    </div>
+  {% else %}
+    <h1>🔍 Book Report: {{ report.query_title }}{% if report.query_author %} — {{ report.query_author }}{% endif %}</h1>
+    <div class="meta">
+      Deep-dive across {{ report.scraper_results | selectattr("success") | list | length }}
+      source(s) · Generated {{ report.generated_at }}
+    </div>
+  {% endif %}
+</header>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SOURCE STATUS BAR                                                -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="source-bar">
+  {% for r in report.scraper_results %}
+  <span class="source-chip {{ 'ok' if r.success else 'fail' }}"
+        style="border-color: {{ r.scraper_name | source_color }}; color: {{ r.scraper_name | source_color }}; background: {{ r.scraper_name | source_color }}18;">
+    <span class="dot"></span>
+    {{ r.scraper_name }}
+    {% if not r.success %}✗{% endif %}
+  </span>
+  {% endfor %}
+</div>
+
+<!-- Warnings -->
+{% if report.warnings %}
+<details class="warnings">
+  <summary>⚠ {{ report.warnings | length }} warning(s)</summary>
+  <ul style="margin-top:0.5rem; padding-left:1.2rem;">
+    {% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+</details>
+{% endif %}
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- TRENDING MODE                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% if report.mode == "trending" %}
+
+  {% if report.trending_books %}
+  <div class="section-title">Ranked by Composite Trend Score</div>
+  <div class="books-grid">
+    {% for book in report.trending_books %}
+    <div class="book-card">
+
+      <!-- Rank badge -->
+      <div class="rank-col">
+        <div class="rank-badge {% if loop.index <= 3 %}top3{% elif loop.index <= 10 %}top10{% endif %}">
+          #{{ loop.index }}
+        </div>
+      </div>
+
+      <!-- Cover -->
+      {% if book.metadata.cover_url %}
+        <img class="book-cover" src="{{ book.metadata.cover_url }}" alt="{{ book.metadata.title }}" loading="lazy">
+      {% else %}
+        <div class="book-cover-placeholder">📖</div>
+      {% endif %}
+
+      <!-- Info -->
+      <div class="book-info">
+        <div class="book-title">
+          {% if book.metadata.source_url %}
+            <a href="{{ book.metadata.source_url }}" target="_blank" rel="noopener">{{ book.metadata.title }}</a>
+          {% else %}
+            {{ book.metadata.title }}
+          {% endif %}
+        </div>
+
+        {% if book.metadata.authors %}
+          <div class="book-authors">{{ book.metadata.authors | join(", ") }}</div>
+        {% endif %}
+        {% if book.metadata.published_year %}
+          <div class="book-year">{{ book.metadata.published_year }}</div>
+        {% endif %}
+
+        <!-- Source badges -->
+        <div class="source-badges">
+          {% for src in book.sources_found_in %}
+            <span class="badge" style="background: {{ src | source_color }};">{{ src }}</span>
+          {% endfor %}
+        </div>
+
+        <!-- Trend score bar -->
+        <div class="score-row">
+          <div class="score-bar-track">
+            <div class="score-bar-fill" style="width: {{ book.trend_score | score_bar_width }}%;"></div>
+          </div>
+          <span class="score-label">{{ "%.1f"|format(book.trend_score) }}</span>
+        </div>
+
+        <!-- Ratings -->
+        {% if book.ratings_summary and book.ratings_summary.normalized_average %}
+          <div class="book-rating">
+            {{ book.ratings_summary.normalized_average | stars }}
+            <span style="font-size:0.75rem; color:var(--muted);">
+              ({{ book.ratings_summary.total_rating_count | fmt_count }} ratings)
+            </span>
+          </div>
+        {% elif book.ratings %}
+          <div class="book-rating">
+            {{ book.ratings[0].rating | stars }}
+          </div>
+        {% endif %}
+
+        <!-- Bestseller tag -->
+        {% for bs in book.bestseller_statuses[:1] %}
+          <div class="bestseller-tag">NYT #{{ bs.rank }} {{ bs.list_name }}</div>
+        {% endfor %}
+
+        <!-- Genres -->
+        {% if book.metadata.genres %}
+          <div class="book-genres">
+            {% for g in book.metadata.genres[:4] %}
+              <span class="genre-tag">{{ g }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <!-- Description -->
+        {% if book.metadata.description %}
+          <div class="book-desc">{{ book.metadata.description | truncate_smart(180) }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div style="padding: 2rem; text-align:center; color: var(--muted);">
+    No trending books found. Check the warnings above — one or more sources may have failed.
+  </div>
+  {% endif %}
+
+  <!-- Community Discussions -->
+  {% if report.discussions %}
+  <div class="section-title">Community Discussions</div>
+  <div class="discussions">
+    {% for d in report.discussions %}
+    <details class="discussion-item">
+      <summary>
+        <span class="discussion-arrow">▶</span>
+        <span class="badge" style="background: {{ d.source | source_color }};">{{ d.source }}</span>
+        {% if d.subreddit %}
+          <span style="font-size:0.78rem;color:var(--muted);">r/{{ d.subreddit }}</span>
+        {% endif %}
+        <span class="discussion-title">{{ d.title }}</span>
+        <span class="discussion-meta">
+          {% if d.score %}▲ {{ d.score | fmt_count }}{% endif %}
+          {% if d.comment_count %} · 💬 {{ d.comment_count | fmt_count }}{% endif %}
+        </span>
+        <a href="{{ d.url }}" target="_blank" rel="noopener"
+           style="font-size:0.75rem;color:var(--accent);text-decoration:none;">↗</a>
+      </summary>
+      {% if d.top_comments %}
+      <div class="discussion-comments">
+        {% for comment in d.top_comments %}
+          <div class="comment-block">{{ comment }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% endif %}{# end trending mode #}
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- BOOK DEEP-DIVE MODE                                              -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% if report.mode == "book" %}
+
+  <!-- Hero section -->
+  <div class="book-hero">
+    {% set m = report.canonical_metadata %}
+    {% if m and m.cover_url %}
+      <img class="hero-cover" src="{{ m.cover_url }}" alt="{{ m.title if m else '' }}">
+    {% else %}
+      <div class="hero-cover-placeholder">📖</div>
+    {% endif %}
+    <div class="hero-info">
+      {% if m %}
+        <h1>{{ m.title }}</h1>
+        {% if m.authors %}
+          <div class="hero-authors">by {{ m.authors | join(", ") }}</div>
+        {% endif %}
+        {% if m.description %}
+          <div class="hero-desc">{{ m.description | truncate_smart(400) }}</div>
+        {% endif %}
+        <div style="margin-top:0.8rem; display:flex; flex-wrap:wrap; gap:0.5rem;">
+          {% for g in (m.genres or [])[:6] %}
+            <span class="genre-tag">{{ g }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <h1>{{ report.query_title }}</h1>
+        <div class="hero-authors" style="color:var(--danger);">No metadata found across sources.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Metadata table -->
+  {% if report.canonical_metadata %}
+  {% set m = report.canonical_metadata %}
+  <div class="section-title">Metadata</div>
+  <div class="collapsible-body" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:1rem;">
+    <table class="meta-table">
+      {% if m.published_year %}<tr><td>Published</td><td>{{ m.published_year }}</td></tr>{% endif %}
+      {% if m.publisher %}<tr><td>Publisher</td><td>{{ m.publisher }}</td></tr>{% endif %}
+      {% if m.page_count %}<tr><td>Pages</td><td>{{ m.page_count }}</td></tr>{% endif %}
+      {% if m.isbn_13 %}<tr><td>ISBN-13</td><td>{{ m.isbn_13 }}</td></tr>{% endif %}
+      {% if m.isbn_10 %}<tr><td>ISBN-10</td><td>{{ m.isbn_10 }}</td></tr>{% endif %}
+      {% if m.language %}<tr><td>Language</td><td>{{ m.language }}</td></tr>{% endif %}
+      {% if m.source_url %}<tr><td>Primary Source</td><td><a href="{{ m.source_url }}" target="_blank" style="color:var(--accent);">{{ m.source_url | truncate_smart(80) }}</a></td></tr>{% endif %}
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Ratings summary -->
+  {% if report.ratings_summary %}
+  {% set rs = report.ratings_summary %}
+  <div class="section-title">Ratings</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;">
+    {% if rs.normalized_average %}
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+      <div class="rating-avg">{{ rs.normalized_average | stars }}</div>
+      <div style="font-size:0.85rem;color:var(--muted);">
+        {{ rs.total_rating_count | fmt_count }} total ratings across {{ rs.sources | length }} source(s)
+      </div>
+    </div>
+    {% endif %}
+    <table class="ratings-table">
+      <thead>
+        <tr>
+          <th>Source</th><th>Rating</th><th>Raw</th><th>Scale</th><th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rs.sources %}
+        <tr>
+          <td><span class="badge" style="background:{{ r.source | source_color }};">{{ r.source }}</span></td>
+          <td>{{ r.rating | stars }}</td>
+          <td>{{ r.raw_rating }}</td>
+          <td>/ {{ r.raw_scale }}</td>
+          <td>{{ r.rating_count | fmt_count if r.rating_count else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Bestseller status -->
+  {% if report.bestseller_statuses %}
+  <div class="section-title">Bestseller History</div>
+  <div class="bs-list" style="margin-bottom:1rem;">
+    {% for bs in report.bestseller_statuses %}
+    <div class="bs-item">
+      <div class="bs-list-name">{{ bs.list_name }}</div>
+      <div class="bs-details">
+        Rank #{{ bs.rank if bs.rank else "?" }}
+        {% if bs.weeks_on_list %} · {{ bs.weeks_on_list }} weeks{% endif %}
+        {% if bs.date %} · {{ bs.date }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Similar books -->
+  {% if report.similar_books %}
+  <div class="section-title">Similar Books ({{ report.similar_books | length }})</div>
+  <div class="similar-list" style="margin-bottom:1rem;">
+    {% for book in report.similar_books %}
+    <div class="similar-item">
+      <div class="s-title">{{ book.title }}</div>
+      {% if book.authors %}<div class="s-author">{{ book.authors | join(", ") }}</div>{% endif %}
+      {% if book.reason %}<div style="font-size:0.72rem;color:var(--muted);">{{ book.reason }}</div>{% endif %}
+      <span class="badge" style="background:{{ book.source | source_color }};margin-top:0.2rem;">{{ book.source }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Discussions -->
+  {% if report.discussions %}
+  <div class="section-title">Community Discussions ({{ report.discussions | length }})</div>
+  <div class="discussions" style="margin-bottom:1rem;">
+    {% for d in report.discussions %}
+    <details class="discussion-item">
+      <summary>
+        <span class="discussion-arrow">▶</span>
+        <span class="badge" style="background: {{ d.source | source_color }};">{{ d.source }}</span>
+        {% if d.subreddit %}
+          <span style="font-size:0.78rem;color:var(--muted);">r/{{ d.subreddit }}</span>
+        {% endif %}
+        <span class="discussion-title">{{ d.title }}</span>
+        <span class="discussion-meta">
+          {% if d.score %}▲ {{ d.score | fmt_count }}{% endif %}
+          {% if d.comment_count %} · 💬 {{ d.comment_count | fmt_count }}{% endif %}
+        </span>
+        <a href="{{ d.url }}" target="_blank" rel="noopener"
+           style="font-size:0.75rem;color:var(--accent);text-decoration:none;">↗</a>
+      </summary>
+      {% if d.top_comments %}
+      <div class="discussion-comments">
+        {% for comment in d.top_comments %}
+          <div class="comment-block">{{ comment }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Reviews -->
+  {% if report.reviews %}
+  <div class="section-title">Reviews ({{ report.reviews | length }})</div>
+  <div class="reviews-grid" style="margin-bottom:1rem;">
+    {% for review in report.reviews %}
+    <div class="review-card">
+      <div class="review-header">
+        <span class="badge review-source" style="background:{{ review.source | source_color }};">{{ review.source }}</span>
+        {% if review.rating %}<span class="review-rating">{{ review.rating | stars }}</span>{% endif %}
+      </div>
+      {% if review.author_name %}<div class="review-author">{{ review.author_name }}</div>{% endif %}
+      <div class="review-text">{{ review.text | truncate_smart(350) }}</div>
+      {% if review.url %}
+        <a href="{{ review.url }}" target="_blank" rel="noopener"
+           style="font-size:0.75rem;color:var(--accent);text-decoration:none;margin-top:0.4rem;display:inline-block;">Read full review ↗</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% endif %}{# end book mode #}
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- PER-SOURCE SECTIONS (collapsible)                                -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section-title">Per-Source Data</div>
+{% for result in report.scraper_results %}
+<details class="collapsible">
+  <summary>
+    <span class="badge" style="background:{{ result.scraper_name | source_color }};">{{ result.scraper_name }}</span>
+    {% if result.success %}
+      <span style="color:var(--success);font-size:0.82rem;">✓ OK</span>
+      {% if result.trending_books %}· {{ result.trending_books | length }} trending entries{% endif %}
+      {% if result.metadata %}· metadata found{% endif %}
+      {% if result.ratings %}· {{ result.ratings | length }} rating(s){% endif %}
+      {% if result.discussions %}· {{ result.discussions | length }} discussion(s){% endif %}
+    {% else %}
+      <span style="color:var(--danger);font-size:0.82rem;">✗ FAILED: {{ result.error_message }}</span>
+    {% endif %}
+  </summary>
+  <div class="collapsible-body">
+    {% if result.metadata %}
+    <p style="font-size:0.85rem;margin-bottom:0.5rem;">
+      <strong>{{ result.metadata.title }}</strong>
+      {% if result.metadata.authors %}by {{ result.metadata.authors | join(", ") }}{% endif %}
+      {% if result.metadata.published_year %}({{ result.metadata.published_year }}){% endif %}
+    </p>
+    {% endif %}
+    {% if result.ratings %}
+    <p style="font-size:0.83rem;color:var(--muted);">
+      Ratings:
+      {% for r in result.ratings %}
+        {{ r.rating | stars }} ({{ r.rating_count | fmt_count if r.rating_count else "?" }} ratings)
+      {% endfor %}
+    </p>
+    {% endif %}
+    {% if result.trending_books %}
+    <p style="font-size:0.83rem;color:var(--muted);">
+      Trending entries: {{ result.trending_books | length }}<br>
+      Top 5:
+      {% for entry in result.trending_books[:5] %}
+        <span class="genre-tag">{{ entry.metadata.title }}</span>
+      {% endfor %}
+    </p>
+    {% endif %}
+  </div>
+</details>
+{% endfor %}
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- RAW JSON DEBUG                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section-title">Raw JSON Debug</div>
+{% for result in report.scraper_results %}
+<details class="collapsible">
+  <summary>
+    <span class="badge" style="background:{{ result.scraper_name | source_color }};">{{ result.scraper_name }}</span>
+    raw_data
+  </summary>
+  <div class="collapsible-body">
+    <pre class="json">{{ to_json(result.raw_data) }}</pre>
+  </div>
+</details>
+{% endfor %}
+
+</div>{# /container #}
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- FOOTER                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<footer>
+  Generated {{ report.generated_at }} ·
+  {% if report.mode == "trending" %}Trending 30 mode
+  {% else %}Query: "{{ report.query_title }}"{% if report.query_author %} by {{ report.query_author }}{% endif %}{% endif %}
+  {% if report.warnings %}· ⚠ {{ report.warnings | length }} warning(s) — see top of page{% endif %}
+</footer>
+
+</body>
+</html>
